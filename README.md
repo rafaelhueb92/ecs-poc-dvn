@@ -95,8 +95,8 @@ terraform destroy
 
 ## Configuration ⚙️
 
-| Variable          | Type   | Default | Description                                                        |
-| ----------------- | ------ | ------- | ------------------------------------------------------------------ |
+| Variable          | Type   | Default | Description                                                         |
+| ----------------- | ------ | ------- | ------------------------------------------------------------------- |
 | `use_certificate` | `bool` | `false` | When `true`, provisions an ACM certificate and serves HTTPS on 443. |
 
 ### Enabling HTTPS
@@ -106,8 +106,67 @@ terraform destroy
 3. Ensure the domain's hosted zone exists in Route 53.
 4. Re-run `terraform apply`.
 
+## Autoscaling Test with Siege ⚙️
+
+A practical way to validate ECS autoscaling is to generate sustained traffic against the ALB and watch the service scale out in CloudWatch/ECS. `siege` is a good fit for this because it can send concurrent requests quickly and simulate pressure without extra infrastructure.
+
+### Install Siege
+
+On macOS:
+
+```bash
+brew install siege
+```
+
+On Ubuntu/Debian:
+
+```bash
+sudo apt-get update
+sudo apt-get install -y siege
+```
+
+### Example load test
+
+Use the ALB DNS name from Terraform output:
+
+```bash
+terraform output alb_dns_name
+```
+
+Then run a burst test against the public endpoint:
+
+```bash
+siege -c 50 -t 2M http://<alb-dns-name>/
+```
+
+Useful variations:
+
+```bash
+# light concurrency
+siege -c 10 -t 1M http://<alb-dns-name>/
+
+# heavier concurrency for scale-out testing
+siege -c 100 -t 5M http://<alb-dns-name>/
+
+# run multiple users repeatedly
+siege -c 200 -r 10 http://<alb-dns-name>/
+```
+
+### What to watch
+
+- ECS service desired count increasing
+- ALB target health and request counts
+- CloudWatch alarms and autoscaling activity
+- CPU utilization in the ECS tasks
+
+### Notes
+
+- Start with a modest concurrency value and increase gradually.
+- Because this is a proof-of-concept, scaling policies are intentionally simple and should be tuned for real workloads.
+- For realistic autoscaling validation, pair `siege` with CPU-based CloudWatch alarms or target tracking policies.
+
 ## Notes 📝
 
 - The task definition uses `nginx:latest` as a placeholder image — swap it for your own container image.
 - The target group's health check block is currently commented out; uncomment it to enable ALB health checks.
-- This is a proof-of-concept, so resources are minimal and not tuned for production (e.g. single NAT Gateway, no autoscaling).
+- This is a proof-of-concept, so resources are minimal and not tuned for production (e.g. single NAT Gateway, no advanced autoscaling policies yet).
